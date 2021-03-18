@@ -3,6 +3,7 @@ import Express from "express";
 import { createServer } from "http";
 import { Server as SocketIOServer, Socket } from "socket.io";
 import { v4 as uuidv4 } from "uuid";
+import compact from "lodash/compact";
 
 dotenv.config();
 
@@ -25,9 +26,9 @@ class Player {
   }
 }
 
-class RoomState {
+abstract class RoomState {
   protected connectedPlayers: Array<Player> = [];
-  protected gameState: any = {};
+  protected abstract gameState: any;
   protected status: "notReady" | "ready" | "inProgress" | "done" = "notReady";
   protected minPlayers: number;
   protected maxPlayers: number;
@@ -49,23 +50,13 @@ class RoomState {
     return this.connectedPlayers.length < this.maxPlayers;
   }
 
+  abstract isFinished(): boolean;
+  abstract reset(): boolean;
+  abstract move(...args: any): boolean;
+
   start() {
     if (this.isReady()) {
       this.status = "inProgress";
-      return true;
-    }
-    return false;
-  }
-
-  reset() {
-    this.gameState = {};
-    this.status = "ready";
-    return true;
-  }
-
-  move(newGameState: any, socketID: string) {
-    if (this.status === "inProgress") {
-      this.gameState = newGameState;
       return true;
     }
     return false;
@@ -89,7 +80,6 @@ class RoomState {
 
   serialize() {
     return this;
-    return JSON.stringify(this);
   }
 }
 
@@ -113,6 +103,19 @@ class XORoomState extends RoomState {
   };
   protected playerX?: string;
   protected playerO?: string;
+
+  private static winningSlots: Array<Array<XOSlotName>> = [
+    ["0-0", "0-1", "0-2"],
+    ["1-0", "1-1", "1-2"],
+    ["2-0", "2-1", "2-2"],
+
+    ["0-0", "1-0", "2-0"],
+    ["0-1", "1-1", "2-1"],
+    ["0-2", "1-2", "2-2"],
+
+    ["0-0", "1-1", "2-2"],
+    ["0-2", "1-1", "2-0"],
+  ];
 
   constructor() {
     super(2, 2);
@@ -153,6 +156,24 @@ class XORoomState extends RoomState {
     return true;
   }
 
+  isFinished() {
+    if (this.status === "notReady" || this.status === "ready") return false;
+    if (
+      XORoomState.winningSlots.find(
+        (slots) =>
+          slots.every((slot) => this.gameState.slots[slot] === "X") ||
+          slots.every((slot) => this.gameState.slots[slot] === "O")
+      )
+    ) {
+      this.status = "done";
+      return true;
+    }
+    if (compact(Object.values(this.gameState.slots)).length < 9) return false;
+
+    this.status = "done";
+    return true;
+  }
+
   reset() {
     this.gameState.slots = {
       "0-0": null,
@@ -170,6 +191,7 @@ class XORoomState extends RoomState {
   }
 
   move(slot: XOSlotName, socketID: string) {
+    if (this.status === "done") return false; // INVESTIGATE : try switching this line with the one after it.
     if (this.status !== "inProgress") return false;
     if (this.gameState.currentTurn?.socketID !== socketID) return false;
     if (this.gameState.slots[slot]) return false;
@@ -178,6 +200,7 @@ class XORoomState extends RoomState {
       this.gameState.currentTurn = this.connectedPlayers.find(
         (player) => player.socketID !== socketID
       );
+      this.isFinished();
       return true;
     }
     if (this.playerO === socketID) {
@@ -185,6 +208,7 @@ class XORoomState extends RoomState {
       this.gameState.currentTurn = this.connectedPlayers.find(
         (player) => player.socketID !== socketID
       );
+      this.isFinished();
       return true;
     }
     return false;
