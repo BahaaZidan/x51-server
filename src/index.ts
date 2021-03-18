@@ -55,7 +55,7 @@ abstract class RoomState {
   abstract move(...args: any): boolean;
 
   start() {
-    if (this.isReady()) {
+    if (this.status === "ready") {
       this.status = "inProgress";
       return true;
     }
@@ -158,23 +158,12 @@ class XORoomState extends RoomState {
   isFinished() {
     if (this.status === "notReady" || this.status === "ready") return false;
     if (
-      XORoomState.winningSlots.find(
-        (slots) =>
-          slots.every((slot) => this.gameState.slots[slot] === "X") ||
-          slots.every((slot) => this.gameState.slots[slot] === "O")
-      )
-      // XORoomState.winningSlots.find((slots) => {
-      //   const xWins = slots.every((slot) => this.gameState.slots[slot] === "X");
-      //   const oWins = slots.every((slot) => this.gameState.slots[slot] === "O");
-      //   if (xWins) {
-      //     this.winner = "X";
-      //     return true;
-      //   } else if (oWins) {
-      //     this.winner = "O";
-      //     return true;
-      //   }
-      //   return false;
-      // })
+      XORoomState.winningSlots.find((slots) => {
+        const xWins = slots.every((slot) => this.gameState.slots[slot] === "X");
+        const oWins = slots.every((slot) => this.gameState.slots[slot] === "O");
+        if (xWins || oWins) this.winner = xWins ? "X" : "O";
+        return xWins || oWins;
+      })
     ) {
       this.status = "done";
       return true;
