@@ -103,6 +103,7 @@ class XORoomState extends RoomState {
   };
   protected playerX?: string;
   protected playerO?: string;
+  protected winner?: "X" | "O";
 
   private static winningSlots: Array<Array<XOSlotName>> = [
     ["0-0", "0-1", "0-2"],
@@ -146,13 +147,11 @@ class XORoomState extends RoomState {
   }
 
   start() {
-    const result = super.start();
-    if (!result) return false;
-
+    if (this.status !== "ready") return false;
     this.gameState.currentTurn = this.connectedPlayers[
       Math.floor(Math.random() * this.connectedPlayers.length)
     ];
-
+    this.status = "inProgress";
     return true;
   }
 
@@ -164,6 +163,18 @@ class XORoomState extends RoomState {
           slots.every((slot) => this.gameState.slots[slot] === "X") ||
           slots.every((slot) => this.gameState.slots[slot] === "O")
       )
+      // XORoomState.winningSlots.find((slots) => {
+      //   const xWins = slots.every((slot) => this.gameState.slots[slot] === "X");
+      //   const oWins = slots.every((slot) => this.gameState.slots[slot] === "O");
+      //   if (xWins) {
+      //     this.winner = "X";
+      //     return true;
+      //   } else if (oWins) {
+      //     this.winner = "O";
+      //     return true;
+      //   }
+      //   return false;
+      // })
     ) {
       this.status = "done";
       return true;
@@ -175,19 +186,23 @@ class XORoomState extends RoomState {
   }
 
   reset() {
-    this.gameState.slots = {
-      "0-0": null,
-      "0-1": null,
-      "0-2": null,
-      "1-0": null,
-      "1-1": null,
-      "1-2": null,
-      "2-0": null,
-      "2-1": null,
-      "2-2": null,
-    };
-    this.status = "ready";
-    return true;
+    if (this.status === "done") {
+      this.gameState.slots = {
+        "0-0": null,
+        "0-1": null,
+        "0-2": null,
+        "1-0": null,
+        "1-1": null,
+        "1-2": null,
+        "2-0": null,
+        "2-1": null,
+        "2-2": null,
+      };
+      this.winner = undefined;
+      this.status = "ready";
+      return true;
+    }
+    return false;
   }
 
   move(slot: XOSlotName, socketID: string) {
@@ -235,6 +250,8 @@ export const PLAYER_MOVED_EVENT = "PLAYER_MOVED_EVENT";
 export const BOARD_CHANGED_EVENT = "BOARD_CHANGED_EVENT";
 export const PLAYER_START_ROOM_EVENT = "PLAYER_START_ROOM_EVENT";
 export const PLAYER_STARTED_ROOM_EVENT = "PLAYER_STARTED_ROOM_EVENT";
+export const PLAYER_RESET_ROOM_EVENT = "PLAYER_RESET_ROOM_EVENT";
+export const PLAYER_RESETED_ROOM_EVENT = "PLAYER_RESETED_ROOM_EVENT";
 
 xoNameSpace.adapter.on("create-room", (room) => {
   TheBossObject.xo.rooms.set(room, new XORoomState());
@@ -283,6 +300,19 @@ xoNameSpace.on("connection", (socket) => {
         .to(room)
         .emit(
           PLAYER_STARTED_ROOM_EVENT,
+          TheBossObject.xo.rooms.get(room)?.serialize()
+        );
+    }
+  });
+
+  socket.on(PLAYER_RESET_ROOM_EVENT, ({ room }) => {
+    const result = TheBossObject.xo.rooms.get(room)?.reset();
+
+    if (result) {
+      xoNameSpace
+        .to(room)
+        .emit(
+          PLAYER_RESETED_ROOM_EVENT,
           TheBossObject.xo.rooms.get(room)?.serialize()
         );
     }
