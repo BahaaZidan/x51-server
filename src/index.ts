@@ -1,9 +1,10 @@
 import dotenv from "dotenv";
 import Express from "express";
 import { createServer } from "http";
-import { Server as SocketIOServer, Socket } from "socket.io";
+import { Server as SocketIOServer } from "socket.io";
 import { v4 as uuidv4 } from "uuid";
-import compact from "lodash/compact";
+import { Player } from "./RoomState";
+import XORoomState from "./XORoomState";
 
 dotenv.config();
 
@@ -16,217 +17,12 @@ const io = new SocketIOServer(http, {
   },
 });
 
-class Player {
-  socketID: string;
-  nickname?: string;
-
-  constructor(socketID: string, nickname?: string) {
-    this.socketID = socketID;
-    this.nickname = nickname;
-  }
-}
-
-abstract class RoomState {
-  protected connectedPlayers: Array<Player> = [];
-  protected abstract gameState: any;
-  protected status: "notReady" | "ready" | "inProgress" | "done" = "notReady";
-  protected minPlayers: number;
-  protected maxPlayers: number;
-
-  constructor(minPlayers: number, maxPlayers: number) {
-    this.minPlayers = minPlayers;
-    this.maxPlayers = maxPlayers;
-  }
-
-  isReady() {
-    if (this.connectedPlayers.length === this.minPlayers) {
-      this.status = "ready";
-      return true;
-    }
-    return false;
-  }
-
-  isJoinable() {
-    return this.connectedPlayers.length < this.maxPlayers;
-  }
-
-  abstract isFinished(): boolean;
-  abstract reset(): boolean;
-  abstract move(...args: any): boolean;
-
-  start() {
-    if (this.status === "ready") {
-      this.status = "inProgress";
-      return true;
-    }
-    return false;
-  }
-
-  addPlayer(player: Player) {
-    if (this.isJoinable()) {
-      this.connectedPlayers = this.connectedPlayers.concat(player);
-      this.isReady();
-      return true;
-    }
-    return false;
-  }
-
-  removePlayer(socketID: string) {
-    this.connectedPlayers = this.connectedPlayers.filter(
-      (player) => player.socketID !== socketID
-    );
-    this.isReady();
-  }
-
-  serialize() {
-    return this;
-  }
-}
-
-type XOSlotName =
-  | "0-0"
-  | "0-1"
-  | "0-2"
-  | "1-0"
-  | "1-1"
-  | "1-2"
-  | "2-0"
-  | "2-1"
-  | "2-2";
-
-class XORoomState extends RoomState {
-  protected gameState: {
-    currentTurn?: Player; // TODO : should be a Cyclic Linked List
-    slots: {
-      [key in XOSlotName]: XOSlotState;
-    };
-  };
-  protected playerX?: string;
-  protected playerO?: string;
-  protected winner?: "X" | "O";
-
-  private static winningSlots: Array<Array<XOSlotName>> = [
-    ["0-0", "0-1", "0-2"],
-    ["1-0", "1-1", "1-2"],
-    ["2-0", "2-1", "2-2"],
-
-    ["0-0", "1-0", "2-0"],
-    ["0-1", "1-1", "2-1"],
-    ["0-2", "1-2", "2-2"],
-
-    ["0-0", "1-1", "2-2"],
-    ["0-2", "1-1", "2-0"],
-  ];
-
-  constructor() {
-    super(2, 2);
-    this.gameState = {
-      slots: {
-        "0-0": null,
-        "0-1": null,
-        "0-2": null,
-        "1-0": null,
-        "1-1": null,
-        "1-2": null,
-        "2-0": null,
-        "2-1": null,
-        "2-2": null,
-      },
-    };
-  }
-
-  addPlayer(player: Player) {
-    const result = super.addPlayer(player);
-    if (!result) return false;
-    if (!this.playerX) {
-      this.playerX = player.socketID;
-    } else if (!this.playerO) {
-      this.playerO = player.socketID;
-    }
-    return true;
-  }
-
-  start() {
-    if (this.status !== "ready") return false;
-    this.gameState.currentTurn = this.connectedPlayers[
-      Math.floor(Math.random() * this.connectedPlayers.length)
-    ];
-    this.status = "inProgress";
-    return true;
-  }
-
-  isFinished() {
-    if (this.status === "notReady" || this.status === "ready") return false;
-    if (
-      XORoomState.winningSlots.find((slots) => {
-        const xWins = slots.every((slot) => this.gameState.slots[slot] === "X");
-        const oWins = slots.every((slot) => this.gameState.slots[slot] === "O");
-        if (xWins || oWins) this.winner = xWins ? "X" : "O";
-        return xWins || oWins;
-      })
-    ) {
-      this.status = "done";
-      return true;
-    }
-    if (compact(Object.values(this.gameState.slots)).length < 9) return false;
-
-    this.status = "done";
-    return true;
-  }
-
-  reset() {
-    if (this.status === "done") {
-      this.gameState.slots = {
-        "0-0": null,
-        "0-1": null,
-        "0-2": null,
-        "1-0": null,
-        "1-1": null,
-        "1-2": null,
-        "2-0": null,
-        "2-1": null,
-        "2-2": null,
-      };
-      this.winner = undefined;
-      this.status = "ready";
-      return true;
-    }
-    return false;
-  }
-
-  move(slot: XOSlotName, socketID: string) {
-    if (this.status === "done") return false; // INVESTIGATE : try switching this line with the one after it.
-    if (this.status !== "inProgress") return false;
-    if (this.gameState.currentTurn?.socketID !== socketID) return false;
-    if (this.gameState.slots[slot]) return false;
-    if (this.playerX === socketID) {
-      this.gameState.slots[slot] = "X";
-      this.gameState.currentTurn = this.connectedPlayers.find(
-        (player) => player.socketID !== socketID
-      );
-      this.isFinished();
-      return true;
-    }
-    if (this.playerO === socketID) {
-      this.gameState.slots[slot] = "O";
-      this.gameState.currentTurn = this.connectedPlayers.find(
-        (player) => player.socketID !== socketID
-      );
-      this.isFinished();
-      return true;
-    }
-    return false;
-  }
-}
-
 const TheBossObject = {
   xo: {
     name: "Tic Tac Toe",
     rooms: new Map<string, XORoomState>(),
   },
 };
-
-type XOSlotState = undefined | null | "X" | "O";
 
 const xoNameSpace = io.of("/xo");
 
@@ -317,16 +113,6 @@ xoNameSpace.on("connection", (socket) => {
           TheBossObject.xo.rooms.get(room)?.serialize()
         );
     }
-  });
-});
-
-app.get("/", (req, res) => {
-  res.sendFile(__dirname + "/public/index.html");
-});
-
-io.on("connection", (socket) => {
-  socket.on("chat message", (msg) => {
-    io.emit("chat message", msg);
   });
 });
 
