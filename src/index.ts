@@ -24,6 +24,7 @@ const TheBossObject = {
 
 const xoNameSpace = io.of("/xo");
 
+export const GAME_STATE_CHANGED = "GAME_STATE_CHANGED";
 export const PLAYER_CREATE_ROOM_EVENT = "PLAYER_CREATE_ROOM_EVENT";
 export const ROOM_CREATED_EVENT = "ROOM_CREATED_EVENT";
 export const PLAYER_JOIN_ROOM_EVENT = "PLAYER_JOIN_ROOM_EVENT";
@@ -46,22 +47,22 @@ xoNameSpace.adapter.on("delete-room", (room) => {
 
 xoNameSpace.adapter.on("join-room", (room, socketID) => {
   TheBossObject.xo.rooms.get(room)?.addPlayer(new Player(socketID));
+
   xoNameSpace
     .to(room)
-    .emit(
-      PLAYER_JOINED_ROOM_EVENT,
-      TheBossObject.xo.rooms.get(room)?.serialize()
-    );
+    .emit(GAME_STATE_CHANGED, TheBossObject.xo.rooms.get(room)?.serialize());
+
+  xoNameSpace.to(room).emit(PLAYER_JOINED_ROOM_EVENT, { socketID });
 });
 
 xoNameSpace.adapter.on("leave-room", (room, socketID) => {
   TheBossObject.xo.rooms.get(room)?.removePlayer(socketID);
+
   xoNameSpace
     .to(room)
-    .emit(
-      PLAYER_LEFT_ROOM_EVENT,
-      TheBossObject.xo.rooms.get(room)?.serialize()
-    );
+    .emit(GAME_STATE_CHANGED, TheBossObject.xo.rooms.get(room)?.serialize());
+
+  xoNameSpace.to(room).emit(PLAYER_LEFT_ROOM_EVENT, { socketID });
 });
 
 xoNameSpace.on("connection", (socket) => {
@@ -82,9 +83,13 @@ xoNameSpace.on("connection", (socket) => {
       xoNameSpace
         .to(room)
         .emit(
-          PLAYER_STARTED_ROOM_EVENT,
+          GAME_STATE_CHANGED,
           TheBossObject.xo.rooms.get(room)?.serialize()
         );
+
+      xoNameSpace
+        .to(room)
+        .emit(PLAYER_STARTED_ROOM_EVENT, { socketID: socket.id });
     }
   });
 
@@ -95,9 +100,13 @@ xoNameSpace.on("connection", (socket) => {
       xoNameSpace
         .to(room)
         .emit(
-          PLAYER_RESETED_ROOM_EVENT,
+          GAME_STATE_CHANGED,
           TheBossObject.xo.rooms.get(room)?.serialize()
         );
+
+      xoNameSpace
+        .to(room)
+        .emit(PLAYER_RESETED_ROOM_EVENT, { socketID: socket.id });
     }
   });
 
@@ -107,9 +116,11 @@ xoNameSpace.on("connection", (socket) => {
       xoNameSpace
         .to(room)
         .emit(
-          BOARD_CHANGED_EVENT,
+          GAME_STATE_CHANGED,
           TheBossObject.xo.rooms.get(room)?.serialize()
         );
+
+      xoNameSpace.to(room).emit(BOARD_CHANGED_EVENT, { socketID: socket.id });
     }
   });
 });

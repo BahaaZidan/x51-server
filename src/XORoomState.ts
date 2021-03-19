@@ -109,7 +109,7 @@ class XORoomState extends RoomState {
         "2-2": null,
       };
       this.result = undefined;
-      this.status = "ready";
+      this.status = "inProgress";
       return true;
     }
     return false;
