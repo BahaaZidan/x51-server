@@ -116,7 +116,6 @@ class XORoomState extends RoomState {
   }
 
   move(slot: XOSlotName, socketID: string) {
-    if (this.status === "done") return false; // INVESTIGATE : try switching this line with the one after it.
     if (this.status !== "inProgress") return false;
     if (this.gameState.currentTurn?.socketID !== socketID) return false;
     if (this.gameState.slots[slot]) return false;

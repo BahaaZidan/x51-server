@@ -1,5 +1,4 @@
 import dotenv from "dotenv";
-import Express from "express";
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import { v4 as uuidv4 } from "uuid";
@@ -8,8 +7,7 @@ import XORoomState from "./XORoomState";
 
 dotenv.config();
 
-const app = Express();
-const http = createServer(app);
+const http = createServer();
 const io = new SocketIOServer(http, {
   cors: {
     origin: "http://localhost:3000",
